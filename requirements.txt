@@ -1,0 +1,13 @@
+torch>=1.7.0
+torchvision
+ultralytics
+filterpy
+# SciPy 1.14 supports Python 3.12 and NumPy 1.26.x.  Newer installed builds
+# required NumPy 2.x and prevented FilterPy/SORT from importing.
+scipy==1.14.1
+motmetrics
+opencv-python
+matplotlib
+numpy
+pandas
+pytest

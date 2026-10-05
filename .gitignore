@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environment
+.venv/
+venv/
+
+# IDE / local
+.vscode/
+.idea/
+
+# Dataset
+data/MOT17/
+
+# YOLO weights
+*.pt
+
+# Large generated video
+outputs/*.mp4
+outputs/id_switch_frames/
