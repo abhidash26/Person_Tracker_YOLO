@@ -20,3 +20,7 @@ data/MOT17/
 # Large generated video
 outputs/*.mp4
 outputs/id_switch_frames/
+
+# Generated tracking/evaluation outputs
+outputs/*.txt
+outputs/*.csv
