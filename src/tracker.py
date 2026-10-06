@@ -1,44 +1,74 @@
+"""Simple Online and Realtime Tracking (SORT) implementation.
+
+This module provides:
+- IoU-based detection-to-track association
+- Kalman-filter-based motion prediction
+- Track creation and deletion
+- Persistent object IDs
+"""
+
+
 import numpy as np
 from filterpy.kalman import KalmanFilter
 from scipy.optimize import linear_sum_assignment
 
-def iou_batch(bb_test, bb_gt):
+
+def iou_batch(
+    detections: np.ndarray,
+    trackers: np.ndarray,
+) -> np.ndarray:
+    
     """
-    Computes IoU between two sets of bounding boxes in [x1, y1, x2, y2] format.
-    bb_test: (N, 4)
-    bb_gt: (M, 4)
+    Calculate pairwise IoU between detections and tracks.
+
+    Args:
+        detections: Bounding boxes in [x1, y1, x2, y2] format.
+        trackers: Predicted bounding boxes in the same format.
+
     Returns:
-    iou: (N, M) matrix of IoUs
+        An (N, M) matrix containing the IoU for every detection-track pair.
+
     """
-    if len(bb_test) == 0 or len(bb_gt) == 0:
-        return np.zeros((len(bb_test), len(bb_gt)))
+    if len(detections) == 0 or len(trackers) == 0:
+        return np.zeros((len(detections), len(trackers)))
     
     # Expand dimensions to enable broadcasting
-    bb_test_exp = np.expand_dims(bb_test, 1) # (N, 1, 4)
-    bb_gt_exp = np.expand_dims(bb_gt, 0)     # (1, M, 4)
+    detections_exp = np.expand_dims(detections, 1) # (N, 1, 4)
+    trackers_exp = np.expand_dims(trackers, 0)     # (1, M, 4)
     
     # Calculate intersection coordinates
-    xx1 = np.maximum(bb_test_exp[..., 0], bb_gt_exp[..., 0])
-    yy1 = np.maximum(bb_test_exp[..., 1], bb_gt_exp[..., 1])
-    xx2 = np.minimum(bb_test_exp[..., 2], bb_gt_exp[..., 2])
-    yy2 = np.minimum(bb_test_exp[..., 3], bb_gt_exp[..., 3])
+    xx1 = np.maximum(detections_exp[..., 0], trackers_exp[..., 0])
+    yy1 = np.maximum(detections_exp[..., 1], trackers_exp[..., 1])
+    xx2 = np.minimum(detections_exp[..., 2], trackers_exp[..., 2])
+    yy2 = np.minimum(detections_exp[..., 3], trackers_exp[..., 3])
     
     w = np.maximum(0., xx2 - xx1)
     h = np.maximum(0., yy2 - yy1)
     
     intersection = w * h
     
-    area_test = (bb_test[:, 2] - bb_test[:, 0]) * (bb_test[:, 3] - bb_test[:, 1])
-    area_gt = (bb_gt[:, 2] - bb_gt[:, 0]) * (bb_gt[:, 3] - bb_gt[:, 1])
+    area_detections = (detections[:, 2] - detections[:, 0]) * (detections[:, 3] - detections[:, 1])
+    area_trackers = (trackers[:, 2] - trackers[:, 0]) * (trackers[:, 3] - trackers[:, 1])
     
-    union = np.expand_dims(area_test, 1) + np.expand_dims(area_gt, 0) - intersection
+    union = np.expand_dims(area_detections, 1) + np.expand_dims(area_trackers, 0) - intersection
     
     return intersection / (union + 1e-6)
 
-def associate_detections_to_trackers(detections, trackers, iou_threshold=0.3):
+
+def associate_detections_to_trackers(
+    detections: np.ndarray,
+    trackers: np.ndarray,
+    iou_threshold: float = 0.3,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    
     """
-    Assigns detections to tracked object (both represented as bounding boxes).
-    Returns 3 lists of matches, unmatched_detections and unmatched_trackers.
+    Match detections to predicted tracks using IoU.
+
+    Returns:
+        matches: Detection-track index pairs.
+        unmatched_detections: Detection indices without a match.
+        unmatched_trackers: Track indices without a match.
+
     """
     if len(trackers) == 0:
         return np.empty((0, 2), dtype=int), np.arange(len(detections)), np.empty((0,), dtype=int)
@@ -58,7 +88,7 @@ def associate_detections_to_trackers(detections, trackers, iou_threshold=0.3):
         matched_indices = np.empty((0, 2))
         
     unmatched_detections = []
-    for d, det in enumerate(detections):
+    for d in range(len(detections)):
         if d not in matched_indices[:, 0]:
             unmatched_detections.append(d)
             
@@ -84,19 +114,22 @@ def associate_detections_to_trackers(detections, trackers, iou_threshold=0.3):
     return matches, np.array(unmatched_detections), np.array(unmatched_trackers)
 
 
-class KalmanBoxTracker(object):
+class KalmanBoxTracker:
     """
-    Represents the internal state of individual tracked objects observed as bounding boxes.
+    Track one object using a constant-velocity Kalman filter.
+
+    State:
+        [center_x, center_y, area, aspect_ratio,
+         velocity_x, velocity_y, area_velocity]
     """
     count = 0
     def __init__(self, bbox):
         """
         Initializes a tracker using initial bounding box.
         """
-        # State: [u, v, s, r, u', v', s']
-        # u, v: center coordinates
-        # s: scale (area)
-        # r: aspect ratio
+        # State:
+        # [center_x, center_y, area, aspect_ratio,
+        #  velocity_x, velocity_y, area_velocity]
         self.kf = KalmanFilter(dim_x=7, dim_z=4)
         
         self.kf.F = np.array([
@@ -191,7 +224,8 @@ class KalmanBoxTracker(object):
         """
         return self.convert_x_to_bbox(self.kf.x)
 
-class Sort(object):
+class Sort:
+    '''Manage multiple Kalman-filter-based object tracks.'''
     def __init__(self, max_age=1, min_hits=3, iou_threshold=0.3):
         """
         Sets key parameters for SORT
@@ -211,7 +245,7 @@ class Sort(object):
         """
         self.frame_count += 1
         
-        # Get predicted locations from existing trackers.
+        #Predict the next position of every existing track.
         trks = np.zeros((len(self.trackers), 5))
         to_del = []
         ret = []
@@ -221,7 +255,7 @@ class Sort(object):
             if np.any(np.isnan(pos)):
                 to_del.append(t)
                 
-        # Remove tracks with nan predictions
+        # Remove tracks whose predictions are invalid.
         for t in reversed(to_del):
             self.trackers.pop(t)
             
@@ -229,11 +263,11 @@ class Sort(object):
         
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(dets, trks, self.iou_threshold)
         
-        # Update matched trackers with assigned detections
+        # Update matched tracks using their assigned detections.
         for m in matched:
             self.trackers[m[1]].update(dets[m[0], :])
             
-        # Create and initialise new trackers for unmatched detections
+        # Start a new track for every unmatched detection.
         for i in unmatched_dets:
             trk = KalmanBoxTracker(dets[i, :])
             self.trackers.append(trk)
@@ -245,7 +279,7 @@ class Sort(object):
                 # Return tracks that are actively being tracked and have reached minimum hits
                 ret.append(np.concatenate((d, [trk.id+1])).reshape(1, -1)) 
             i -= 1
-            # Remove dead tracklet
+            # Delete tracks that have been unmatched for too long.
             if trk.time_since_update > self.max_age:
                 self.trackers.pop(i)
                 
@@ -253,5 +287,3 @@ class Sort(object):
             return np.concatenate(ret)
         return np.empty((0, 5))
 
-# Added method to KalmanBoxTracker inside the class definition above is not possible after the fact, 
-# wait I will redefine KalmanBoxTracker to include get_state.
