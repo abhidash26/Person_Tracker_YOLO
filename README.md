@@ -76,7 +76,7 @@ during evaluation.
 | Dataset | [MOT17](https://motchallenge.net/data/MOT17/) |
 | Sequence used | **MOT17-04-FRCNN** |
 | Frames | 1,050 |
-| Resolution | 1545 × 1080 |
+| Resolution | 1920 × 1080 |
 | Frame rate | 30 fps |
 | Annotations | 83 distinct pedestrian IDs |
 
@@ -233,7 +233,7 @@ person-tracking-yolo-sort/
 ├── outputs/
 │   ├── mot17_04_tracks.txt          # Raw tracking output (MOTChallenge format)
 │   ├── mot17_04_evaluation.csv      # Metric summary
-│   ├── id_switch_events.csv         # 10 representative failure cases
+│   ├── id_switch_events.csv         # 10 representative events selected from the identified ID-switch cases.
 │   └── id_switch_frames/            # Annotated images of those frames
 │
 ├── verify_detector.py       # Smoke-test: run detector on a single image
